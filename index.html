@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 數位風向彩帶計 (飄揚版)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050914; /* 科技深藍黑背景 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* 頂部右上角面板 */
+        .top-right-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            background: rgba(10, 20, 40, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 255, 255, 0.4);
+            border-radius: 10px;
+            padding: 15px 25px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.15);
+            text-align: right;
+            pointer-events: none; /* 讓滑鼠穿透 */
+        }
+
+        .top-right-panel h1 {
+            margin: 0 0 8px 0;
+            font-size: 22px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            letter-spacing: 2px;
+        }
+
+        .top-right-panel p {
+            margin: 0;
+            font-size: 13px;
+            color: #a0c0ff;
+        }
+
+       /* 底部控制面板群組 (移至左下角) */
+        .bottom-panels {
+            position: absolute;
+            bottom: 30px;
+            left: 30px; /* 改為靠左對齊，距離左邊緣 30px */
+            /* transform: translateX(-50%); <-- 這一行請刪除或註解掉 */
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: flex-start; /* 讓內部面板靠左對齊 */
+        }
+
+        .control-panel {
+            background: rgba(10, 20, 40, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+        }
+
+        .panel-title {
+            color: #00ffff;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        /* 按鈕共用樣式 */
+        .btn-group, .wind-dir-grid {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .wind-dir-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+        }
+
+        button {
+            background: rgba(0, 50, 100, 0.6);
+            border: 1px solid #0088ff;
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: rgba(0, 100, 200, 0.8);
+            box-shadow: 0 0 10px #00aaff;
+        }
+
+        button.active {
+            background: rgba(0, 255, 255, 0.3);
+            border-color: #00ffff;
+            box-shadow: 0 0 15px #00ffff, inset 0 0 8px #00ffff;
+            color: #00ffff;
+        }
+
+        /* 視角提示 */
+        .view-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10;
+            font-size: 12px;
+            color: #00ffff;
+            opacity: 0.6;
+            text-align: right;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="top-right-panel">
+        <h1>數位風向彩帶計</h1>
+        <p>操作時請先點選風向鍵，再點選風力鍵。</p>
+    </div>
+
+    <div class="bottom-panels">
+        <div class="control-panel">
+            <div class="panel-title">風向 (Direction)</div>
+            <div class="wind-dir-grid" id="dir-buttons">
+                <button data-angle="90">西風</button>
+                <button data-angle="270">東風</button>
+                <button data-angle="180">北風</button>
+                <button data-angle="0">南風</button>
+                <button data-angle="45">西南風</button>
+                <button data-angle="315">東南風</button>
+                <button data-angle="135">西北風</button>
+                <button data-angle="225">東北風</button>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="panel-title">風力 (Force)</div>
+            <div class="btn-group" id="force-buttons">
+                <button data-val="2" id="btn-force-strong">強</button>
+                <button data-val="1" id="btn-force-weak">弱</button>
+                <button data-val="0" id="btn-force-none" class="active">無</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="view-hint">
+        [滑鼠左鍵] 旋轉視角 | [滾輪] 縮放
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- 狀態變數 ---
+        let targetWindDirAngle = 0; // 目標風向角度 (度)
+        let currentForce = 0;       // 0=無, 1=弱, 2=強
+        
+        let currentRibbonDirY = 0;  // 彩帶當前 Y 軸旋轉 (平滑過渡用)
+        let targetRibbonAngleX = 0; // 彩帶目標 X 軸揚起角度 (平滑過渡用)
+        let currentRibbonAngleX = 0;
+
+        // --- Three.js 基礎設定 ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050914, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(20, 15, 30); // 初始視角
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // 防止穿透地面
+        controls.minDistance = 10;
+        controls.maxDistance = 80;
+
+        // --- 燈光 ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const dirLight = new THREE.DirectionalLight(0x00ffff, 1.5);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // --- 建立場景物件 ---
+
+        // 1. 土棕色方形基座
+        const baseSize = 16;
+        const baseGeo = new THREE.BoxGeometry(baseSize, 0.5, baseSize);
+        // 使用代表土地的棕色，加入一點金屬質感融入科技風
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a3219, roughness: 0.8, metalness: 0.2 });
+        const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+        baseMesh.position.y = -0.25;
+        scene.add(baseMesh);
+
+        // 基座科技感邊框
+        const edges = new THREE.EdgesGeometry(baseGeo);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+        const baseOutline = new THREE.LineSegments(edges, lineMat);
+        baseOutline.position.y = -0.25;
+        scene.add(baseOutline);
+
+        // 背景微弱網格
+        const gridHelper = new THREE.GridHelper(100, 50, 0x005588, 0x001133);
+        gridHelper.position.y = -0.5;
+        scene.add(gridHelper);
+
+        // 2. 中央科技柱 (高度 15)
+        const poleHeight = 15;
+        const poleGeo = new THREE.CylinderGeometry(0.25, 0.4, poleHeight, 16);
+        const poleMat = new THREE.MeshPhongMaterial({ color: 0x222222, emissive: 0x111111, shininess: 100 });
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.y = poleHeight / 2;
+        scene.add(pole);
+
+        const topSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0x00ffff })
+        );
+        topSphere.position.y = poleHeight;
+        scene.add(topSphere);
+
+        // 3. 浮空方位文字 (使用 Canvas 繪製貼圖)
+        function createTextSprite(text, color) {
+            const canvas = document.createElement('canvas'); 
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d'); 
+            ctx.fillStyle = color;
+            ctx.font = 'bold 120px sans-serif'; 
+            ctx.textAlign = 'center'; 
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = color; 
+            ctx.shadowBlur = 15; 
+            ctx.fillText(text, 128, 128);
+            const texture = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+            sprite.scale.set(4, 4, 1); 
+            return sprite;
+        }
+
+        const dirOffset = 10;
+        const dirs = [
+            { t: '北', pos: [0, 1, -dirOffset] }, 
+            { t: '南', pos: [0, 1, dirOffset] }, 
+            { t: '東', pos: [dirOffset, 1, 0] }, 
+            { t: '西', pos: [-dirOffset, 1, 0] }
+        ];
+        dirs.forEach(d => {
+            const sprite = createTextSprite(d.t, '#00ffff');
+            sprite.position.set(d.pos[0], d.pos[1], d.pos[2]); 
+            scene.add(sprite);
+        });
+
+        // 4. 立體藍色直線彩帶 (帶有頂點物理飄揚)
+        const ribbonLength = 12; // 嚴格小於柱高 (15)，確保不會碰地
+        const ribbonWidth = 0.8;
+        const ribbonSegments = 40;
+
+        // 建立樞紐 (Pivot) 群組，放在柱子頂端
+        const ribbonPivot = new THREE.Group();
+        ribbonPivot.position.y = poleHeight - 0.2;
+        scene.add(ribbonPivot);
+
+        // 建立彩帶幾何體，Y 軸朝下延伸
+        const ribbonGeo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, ribbonSegments);
+        // 將幾何體中心往下移，使其原點位於頂端，方便旋轉
+        ribbonGeo.translate(0, -ribbonLength / 2, 0);
+
+        // 儲存原始頂點位置，用於計算震顫偏移
+        const originalPositions = new Float32Array(ribbonGeo.attributes.position.array);
+
+        const ribbonMat = new THREE.MeshStandardMaterial({ 
+            color: 0x0088ff, // 藍色
+            side: THREE.DoubleSide, // 雙面可見
+            roughness: 0.4,
+            metalness: 0.1
+        });
+        
+        const ribbonMesh = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbonPivot.add(ribbonMesh);
+
+
+        // --- 物理與動畫邏輯 ---
+        const clock = new THREE.Clock();
+
+        function updatePhysics() {
+            const dt = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // 1. 平滑處理角度轉換
+            // THREE.js 中：0度為北(-Z), 順時針旋轉 Y 軸。
+            const targetYRad = -targetWindDirAngle * THREE.MathUtils.DEG2RAD;
+            
+            // 處理旋轉的最短路徑 (避免 359度轉到0度時繞一大圈)
+            let diff = targetYRad - currentRibbonDirY;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            currentRibbonDirY += diff * 5 * dt;
+
+            // 設置目標揚起角度 (直線鉸接)
+            if (currentForce === 0) targetRibbonAngleX = 0;
+            else if (currentForce === 1) targetRibbonAngleX = 45 * THREE.MathUtils.DEG2RAD;
+            else if (currentForce === 2) targetRibbonAngleX = 85 * THREE.MathUtils.DEG2RAD;
+
+            currentRibbonAngleX = THREE.MathUtils.lerp(currentRibbonAngleX, targetRibbonAngleX, 5 * dt);
+
+            // 應用旋轉到樞紐
+            // Y軸控制方向，X軸控制揚起角度。
+            // 因為風吹來，彩帶要往反方向飄。如果風從北(0度)來，彩帶要在南邊揚起。
+            ribbonPivot.rotation.order = 'YXZ';
+            ribbonPivot.rotation.y = currentRibbonDirY; 
+            ribbonPivot.rotation.x = currentRibbonAngleX; 
+
+
+            // 2. 計算頂點的物理震顫 (Tip Chaos - 飄揚效果)
+            const positions = ribbonMesh.geometry.attributes.position.array;
+            let flutterAmplitude = 0;
+            let flutterSpeed = 0;
+
+            if (currentForce === 1) {
+                flutterAmplitude = 0.3; // 弱風震動小
+                flutterSpeed = 15;
+            } else if (currentForce === 2) {
+                flutterAmplitude = 0.8; // 強風震動大
+                flutterSpeed = 35;
+            }
+
+            for (let i = 0; i <= ribbonSegments; i++) {
+                // i=0 是底部尾端(t=1)，i=segments 是頂部連接點(t=0)
+                // PlaneGeometry 頂點順序是從上到下
+                const rowOffset = i * 6; // 每行兩個點，每個點3個座標 (x,y,z)
+                
+                // 計算此點在彩帶上的相對位置 t (0=頂部固定端, 1=底部飄揚端)
+                const t = i / ribbonSegments; 
+                
+                // 震動幅度隨著遠離固定點而增加 (使用 t 的平方讓尾端動作最明顯)
+                const currentChaos = Math.sin(time * flutterSpeed - t * 10) * flutterAmplitude * (t * t);
+
+                // 更新左側頂點 X 座標
+                positions[rowOffset + 0] = originalPositions[rowOffset + 0] + currentChaos;
+                // 更新右側頂點 X 座標
+                positions[rowOffset + 3] = originalPositions[rowOffset + 3] + currentChaos;
+            }
+            
+            ribbonMesh.geometry.attributes.position.needsUpdate = true;
+            ribbonMesh.geometry.computeVertexNormals(); // 重新計算法線以維持正確光影
+        }
+
+        // --- 動畫迴圈 ---
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // --- UI 事件綁定 ---
+        const forceBtns = document.querySelectorAll('#force-buttons button');
+        const dirBtns = document.querySelectorAll('#dir-buttons button');
+
+        forceBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                forceBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentForce = parseInt(e.target.dataset.val);
+            });
+        });
+
+        dirBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                dirBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                targetWindDirAngle = parseInt(e.target.dataset.angle);
+                
+                // 若為無風，點擊方向自動切換為弱風方便觀察
+                if (currentForce === 0) {
+                    document.getElementById('btn-force-weak').click();
+                }
+            });
+        });
+
+        // 初始化狀態 (北風、無風)
+        document.querySelector('#dir-buttons button[data-angle="0"]').classList.add('active');
+        document.getElementById('btn-force-none').click();
+
+        // 視窗縮放自適應
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
